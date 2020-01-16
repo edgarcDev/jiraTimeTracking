@@ -1,0 +1,14 @@
+{
+  "name": "jiraTimeTracking",
+  "version": "1.0",
+  "manifest_version": 2,
+  "description": "計算 Jira 列表中項目，各階段花費時間",
+  "browser_action": {
+    "default_icon": "images/40.png",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "tabs",
+    "<all_urls>"
+  ]
+}
