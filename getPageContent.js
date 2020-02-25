@@ -1,4 +1,4 @@
-var xhr = new XMLHttpRequest();
+
 
 function DOMtoString(document_root) {
     var domParser = new DOMParser();
@@ -10,6 +10,7 @@ function DOMtoString(document_root) {
             key: item.firstElementChild.text
         }
 
+        var xhr = new XMLHttpRequest();
         //http://jira.104.com.tw/activity?streams=issue-key+IS+{key}
         xhr.open("GET", 'http://jira.104.com.tw/activity?maxResults=99&streams=issue-key+IS+' + _item.key, false);
         xhr.send();
@@ -19,15 +20,28 @@ function DOMtoString(document_root) {
             if (xhr.status === 200) {
                 _activity = domParser.parseFromString(xhr.responseText, "text/xml");
 
-                var entrys = _activity.getElementsByTagName('entry');
+                let entrys = _activity.getElementsByTagName('entry');
 
-                var waitTime = 0, techTime = 0, labTestTime = 0, stgTestTime = 0, waitOLTime = 0;
+                let waitTime = 0, techTime = 0, labTestTime = 0, stgTestTime = 0, waitOLTime = 0;
+
+                let flow = {
+                    'created' : ['InProgress', 'Done'],
+                    'InProgress' : ['上Lab中', '重新開發/修正', 'In Review'],
+                    '上Lab中' : ['Lab測試1', 'In Review'],
+                    'In Review' : ['上LAB中', 'Lab測試1', '重新開發/修正', 'Done'],
+                    'Lab測試1' : ['上線中', '重新開發/修正', 'Done'],
+                    '上線中' : ['OL測試', 'Done'],
+                    'OL測試' : ['重新開發/修正', 'Done'],
+                    '重新開發/修正' : ['InProgress', 'Done']
+                }
+
                 for (var i = entrys.length - 1; i >= 0; i--) {
 
-                    //開單後被認領開工
+                    //created 後計入wait
                     if (entrys[i].querySelector('category[term="created"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="InProgress"]')) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.created.indexOf(_step) != -1) {
                                 waitTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
                                 break;
                             }
@@ -35,10 +49,11 @@ function DOMtoString(document_root) {
                         continue;
                     }
 
-                    //開工後上到lab測試
+                    //InProgress後計入 techTime
                     if (entrys[i].querySelector('category[term="InProgress"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="Lab測試1"]')) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.InProgress.indexOf(_step) != -1) {
                                 techTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
                                 break;
                             }
@@ -46,46 +61,48 @@ function DOMtoString(document_root) {
                         continue;
                     }
 
-                    //lab測試被退回
-                    var isFindLabNext = false;
-                    if (entrys[i].querySelector('category[term="Lab測試1"]')) {
+                    //上Lab中 techTime
+                    if (entrys[i].querySelector('category[term="上Lab中"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="重新開發/修正"]')) {
-                                labTestTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
-                                isFindLabNext = true;
-                                break;
-                            }
-                        }
-                        if (isFindLabNext) { continue; }
-                    }
-
-                    //lab測試完成
-                    if (entrys[i].querySelector('category[term="Lab測試1"]')) {
-                        for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="上線中"]')) {
-                                labTestTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
-                                isFindLabNext = true;
-                                break;
-                            }
-                        }
-                        if (isFindLabNext) { continue; }
-                    }
-
-                    //等待修正
-                    if (entrys[i].querySelector('category[term="重新開發/修正"]')) {
-                        for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="InProgress"]')) {
-                                waitTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.上Lab中.indexOf(_step) != -1) {
+                                techTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
                                 break;
                             }
                         }
                         continue;
                     }
 
-                    //上線作業
+
+                    //InReview techTime
+                    if (entrys[i].querySelector('category[term="In Review"]')) {
+                        for (var j = i; j >= 0; j--) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow['In Review'].indexOf(_step) != -1) {
+                                techTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+
+                    //Lab測試1 labTestTime
+                    if (entrys[i].querySelector('category[term="Lab測試1"]')) {
+                        for (var j = i; j >= 0; j--) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.Lab測試1.indexOf(_step) != -1) {
+                                labTestTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+
+                    //上線中 waitOLTime
                     if (entrys[i].querySelector('category[term="上線中"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="OL測試"]')) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.上線中.indexOf(_step) != -1) {
                                 waitOLTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
                                 break;
                             }
@@ -93,31 +110,29 @@ function DOMtoString(document_root) {
                         continue;
                     }
 
-                    //上線作業
-                    var isFindOLTestNext = false;
+                    //OL測試 stgTestTime
                     if (entrys[i].querySelector('category[term="OL測試"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="Done"]')) {
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.OL測試.indexOf(_step) != -1) {
                                 stgTestTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
-                                isFindOLTestNext = true;
                                 break;
                             }
                         }
-                        if (isFindOLTestNext) { continue; }
+                        continue;
                     }
 
-                    //OL測試被退回
+                    //重新開發/修正 waitTime
                     if (entrys[i].querySelector('category[term="OL測試"]')) {
                         for (var j = i; j >= 0; j--) {
-                            if (entrys[j].querySelector('category[term="重新開發/修正"]')) {
-                                stgTestTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
-                                isFindOLTestNext = true;
+                            let _step = entrys[j].querySelector('category[term]') == null ? null : entrys[j].querySelector('category[term]').attributes.term.nodeValue;
+                            if (_step != null && flow.OL測試.indexOf(_step) != -1) {
+                                waitTime += new Date(entrys[j].querySelector('updated').innerHTML).getTime() - new Date(entrys[i].querySelector('updated').innerHTML).getTime();
                                 break;
                             }
                         }
-                        if (isFindOLTestNext) { continue; }
+                        continue;
                     }
-
                 }
 
                 // 各階段區分 （等待工程認領,工程處理,測試中,等待上線）
@@ -142,16 +157,26 @@ function DOMtoString(document_root) {
         sumStgTestTime += parseInt(item.stgTestTime,10);
     }
 
-    var sumItem = {
+    var sumItem0 = {
         key: 'AVG',
-        waitTime: formatSeconds((sumWaitTime / (issueItems.length))),
-        techTime: formatSeconds((sumTechTime / (issueItems.length))),
-        labTestTime: formatSeconds((sumLabTestTime / (issueItems.length))),
-        waitOLTime: formatSeconds((sumWaitOLTime / (issueItems.length))),
-        stgTestTime: formatSeconds((sumStgTestTime / (issueItems.length)))
+        waitTime: ((sumWaitTime / (issueItems.length))).toFixed(0),
+        techTime: ((sumTechTime / (issueItems.length))).toFixed(0),
+        labTestTime: ((sumLabTestTime / (issueItems.length))).toFixed(0),
+        waitOLTime: ((sumWaitOLTime / (issueItems.length))).toFixed(0),
+        stgTestTime: ((sumStgTestTime / (issueItems.length))).toFixed(0)
+    }
+    issueItems.push(sumItem0);
+
+    var sumItem1 = {
+        key: 'AVG',
+        waitTime: formatSeconds(sumItem0.waitTime),
+        techTime: formatSeconds(sumItem0.techTime),
+        labTestTime: formatSeconds(sumItem0.labTestTime),
+        waitOLTime: formatSeconds(sumItem0.waitOLTime),
+        stgTestTime: formatSeconds(sumItem0.stgTestTime)
     }
 
-    issueItems.push(sumItem);
+    issueItems.push(sumItem1);
 
     var _tb = buildHtmlTable(issueItems);
     return _tb.outerHTML;
@@ -177,16 +202,16 @@ function formatSeconds(value) {
     } 
     var result = '';
     if(theTime > 0){
-        result = ""+parseInt(theTime)+"秒";
+        result = ""+parseInt(theTime)+"s";
     }
     if(theTime1 > 0) { 
-        result = ""+parseInt(theTime1)+"分 "+result; 
+        result = ""+parseInt(theTime1)+"m"+result; 
     } 
     if(theTime2 > 0) { 
-        result = ""+parseInt(theTime2)+"時 "+result; 
+        result = ""+parseInt(theTime2)+"h"+result; 
     } 
     if(theTime3 > 0) { 
-        result = ""+parseInt(theTime3)+"天 "+result; 
+        result = ""+parseInt(theTime3)+"d"+result; 
     }
     return result; 
 } 
